@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Les Drivers Lyonnais - Version LootLocker</title>
+<style>
+    body {
+        margin: 0; padding: 0; 
+        background-color: #1a1a2e;
+        overflow: hidden; touch-action: none; font-family: 'Arial', sans-serif;
+        user-select: none; -webkit-user-select: none;
+    }
+    canvas {
+        display: block; margin: 0 auto;
+        position: absolute; top: 0; left: 0; z-index: 10;
+        image-rendering: pixelated; 
+    }
+    
+    /* HUD GAUCHE */
+    #ui {
+        position: absolute; top: 10px; left: 15px; color: #fff;
+        font-family: 'Courier New', monospace; pointer-events: none; z-index: 30;
+    }
+    .hud-line {
+        font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0px #000;
+        margin-bottom: 5px;
+    }
+    #hearts { color: #ff3333; font-size: 24px; }
+
+    /* HUD DROIT (Vitesse) - RÉDUCTION 15% */
+    #speedometer {
+        position: absolute; top: 10px; right: 15px; color: #fff;
+        font-family: 'Courier New', monospace; pointer-events: none; z-index: 30;
+        font-size: 12px; /* Réduit */
+        font-weight: bold; text-shadow: 1px 1px 0px #000;
+        padding: 4px 8px; /* Réduit */
+        background: rgba(0,0,0,0.5);
+        border-radius: 5px;
+        line-height: 1.1;
+    }
+    #speedVal {
+        color: #00ffff;
+        text-shadow: 0 0 4px #00ffff;
+        font-weight: 800;
+        display: inline-block;
+        font-size: 16px; /* Réduit */
+    }
+    #speedometer .hud-label {
+        font-size: 12px; /* Réduit */
+        color: #aaa;
+        display: inline;
+    }
+
+    /* ALERTES & NOTES */
+    #alert-msg {
+        position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);
+        font-family: 'Arial Black', sans-serif; font-size: 24px; 
+        text-align: center; display: none; z-index: 60; pointer-events: none;
+        padding: 15px 30px; border-radius: 10px; border: 4px solid white;
+        background: rgba(0,0,0,0.85); text-shadow: 0 0 10px black;
+        width: 80%; box-shadow: 0 0 20px rgba(255,255,255,0.5);
+    }
+
+    #photo-grade {
+        position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-10deg);
+        font-family: 'Arial Black', sans-serif; font-size: 60px; 
+        color: #ff00ff; text-shadow: 5px 5px 0px #00ffff;
+        display: none; z-index: 80; pointer-events: none;
+        animation: pop 0.5s ease-out;
+    }
+    @keyframes pop { 0% {transform: translate(-50%, -50%) scale(0);} 80% {transform: translate(-50%, -50%) scale(1.2);} 100% {transform: translate(-50%, -50%) scale(1);} }
+
+    /* FLASH ECRAN */
+    #flash-overlay {
+        position: absolute; top:0; left:0; width:100%; height:100%;
+        background: white; opacity: 0; pointer-events: none; z-index: 70;
+        transition: opacity 0.1s;
+    }
+
+    /* --- CONTRÔLES --- */
+
+    /* FREIN (BAS GAUCHE) */
+    #brake-btn {
+        position: absolute; bottom: 30px; 
+        left: 10px;
+        width: 48px;
+        height: 48px;
+        border-radius: 15px;
+        background: radial-gradient(circle, #cc0000, #660000);
+        border: 3px solid #ff5555; color: white;
+        font-weight: bold;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        display: none; align-items: center; justify-content: center;
+        z-index: 50;
+        transition: background 0.1s;
+    }
+    #brake-btn:active { transform: scale(0.95); background: #aa0000; }
+    #brake-btn.cooldown {
+        background: radial-gradient(circle, #333, #111) !important;
+        border-color: #555 !important;
+        color: #888 !important;
+        cursor: not-allowed;
+    }
+
+    /* NOS (BAS DROITE) */
+    #nos-container {
+        position: absolute; bottom: 10px; right: 10px;
+        display: none; flex-direction: column; align-items: center;
+        z-index: 50;
+    }
+    #nos-bar-bg {
+        width: 90px;
+        height: 10px; background: #333; border: 2px solid #fff;
+        border-radius: 10px; overflow: hidden; margin-bottom: 5px;
+    }
+    #nos-bar-fill {
+        width: 0%; height: 100%; background: linear-gradient(90deg, #00ffff, #0000ff);
+        transition: width 0.2s ease-out;
+    }
+    #nos-btn {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #555, #222);
+        border: 4px solid #777; color: #777;
+        font-weight: bold; font-size: 24px; cursor: default;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+    }
+    #nos-btn.ready {
+        background: radial-gradient(circle, #ff0000, #990000);
+        border-color: #ffaaaa; color: white; cursor: pointer;
+        box-shadow: 0 0 25px #ff0000; animation: pulse 1s infinite;
+    }
+
+    /* KLAXON (APPARAIT UNIQUEMENT PENDANT L'ÉVÉNEMENT PHOTO) */
+    #horn-btn {
+        position: absolute; bottom: 10px; right: 10px;
+        width: 48px; 
+        height: 48px; 
+        border-radius: 15px;
+        background: radial-gradient(circle, #f1c40f, #f39c12);
+        border: 3px solid #fff; color: #333;
+        font-weight: bold; font-size: 18px; 
+        cursor: pointer;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        display: none; 
+        align-items: center; justify-content: center;
+        z-index: 50;
+    }
+    #horn-btn:active { transform: scale(0.95); }
+
+    @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.1);} 100% {transform:scale(1);} }
+    
+    /* MENU & LEADERBOARD - MODIFIÉ POUR LE SCROLL */
+    .screen-overlay {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(20, 10, 40, 0.98); 
+        display: flex; flex-direction: column;
+        
+        /* Correction : Alignement en haut pour permettre le scroll correct */
+        justify-content: flex-start; 
+        align-items: center;
+        
+        color: white; z-index: 100; pointer-events: auto;
+
+        /* ACTIVATION DU SCROLL */
+        overflow-y: auto;          /* Scroll vertical autorisé */
+        touch-action: pan-y;       /* Doigt autorisé à scroller verticalement */
+        -webkit-overflow-scrolling: touch; /* Fluidité iOS */
+
+        /* ESPACEMENT POUR NE PAS COUPER LE CONTENU */
+        padding-top: 50px;
+        padding-bottom: 50px;
+        box-sizing: border-box;
+    }
+    
+    #leaderboardScreen { display: none; z-index: 110; }
+    #gameOverScreen { display: none; z-index: 110; }
+    #instructionsScreen { display: none; z-index: 110; } 
+    
+    h1 { color: #ff00ff; text-shadow: 3px 3px #00ffff; margin-bottom: 5px; text-align: center; font-style: italic; font-size: 32px; font-family: 'Courier New', monospace;}
+    
+    /* GAME OVER STYLING */
+    #gameOverTitle { 
+        color: #ff0000; 
+        font-size: 36px; 
+        text-shadow: 0 0 10px #ff0000, 0 0 20px #800000;
+        margin-bottom: 20px;
+    }
+    .final-score-line {
+        font-family: 'Courier New', monospace;
+        font-size: 22px;
+        margin-bottom: 10px;
+    }
+    .final-score-value {
+        color: #00ffff;
+        text-shadow: 0 0 5px #00ffff;
+        font-weight: bold;
+    }
+    #nameInput {
+        padding: 10px;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        font-size: 18px;
+        background: #111;
+        border: 2px solid #ff00ff;
+        color: #00ffff;
+        text-align: center;
+    }
+    
+    /* GRARAGE & STATS STYLING */
+    p { color: #ccc; margin-bottom: 25px; font-size: 14px; letter-spacing: 1px;}
+    #garage { display: flex; align-items: center; justify-content: center; margin-bottom: 10px; pointer-events: auto; }
+    .car-box {
+        width: 140px; height: 180px; border: 4px solid #00ffff; 
+        background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;
+        position: relative; overflow: hidden;
+        flex-shrink: 0; /* Empêche l'écrasement */
+    }
+    #previewCanvas { width: 100%; height: 100%; }
+    .nav-btn {
+        background: #3a1a5a; border: 2px solid #ff00ff; color: #00ffff; 
+        font-size: 24px; width: 50px; height: 50px; cursor: pointer; margin: 0 15px;
+        display: flex; align-items: center; justify-content: center; transition: 0.1s;
+        z-index: 101; pointer-events: auto;
+    }
+    #carName { color: #00ffff; margin-top: 5px; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; text-shadow: 2px 2px 0px #ff00ff; font-family: 'Courier New', monospace; }
+    #carStats {
+        font-family: 'Courier New', monospace; font-size: 16px; color: #fff;
+        margin-bottom: 20px; text-align: center; line-height: 1.6;
+        background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; border: 1px solid #555;
+    }
+    .stat-bar { color: #ffff00; text-shadow: 0 0 5px #ff0000; }
+    
+    button.action-btn {
+        margin-top: 10px; padding: 15px 40px; font-size: 20px; 
+        background: #ff00ff; border: 3px solid #00ffff; color: white; 
+        box-shadow: 4px 4px 0px rgba(0,0,0,0.8); font-weight: bold; cursor: pointer;
+        text-transform: uppercase; font-family: 'Courier New', monospace;
+        z-index: 101; pointer-events: auto; display: block; margin-bottom: 10px;
+    }
+    button.secondary-btn {
+        background: #3a1a5a; border-color: #aaa; color: #ccc; font-size: 16px; padding: 10px 20px;
+    }
+
+    .leaderboard-content {
+        display: flex; align-items: center; justify-content: center; gap: 15px; width: 90%; max-width: 500px;
+        flex-wrap: wrap; /* Pour que ça s'adapte sur petit écran */
+    }
+    #scoreTable {
+        flex: 1; border-collapse: collapse; font-family: 'Courier New', monospace;
+        background: rgba(0,0,0,0.5); border-radius: 10px; padding: 10px;
+        min-width: 250px;
+    }
+    #scoreTable th { border-bottom: 2px solid #00ffff; padding: 8px; color: #ff00ff; font-size: 14px;}
+    #scoreTable td { padding: 6px; text-align: center; border-bottom: 1px solid #555; font-size: 14px;}
+    #scoreTable tr:first-child td { color: yellow; font-weight: bold; }
+    #pilotMascot {
+        width: 100px; height: auto; filter: drop-shadow(0 0 10px #00ffff);
+    }
+
+    /* INSTRUCTIONS SPECIFIC STYLES */
+    .instruction-section {
+        max-width: 500px;
+        width: 90%; /* S'adapte mieux aux mobiles */
+        margin: 10px auto; /* Marges réduites */
+        padding: 15px;
+        border: 1px solid #00ffff;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 5px;
+        text-align: left;
+    }
+    .instruction-section h3 {
+        color: #ff00ff;
+        text-shadow: 0 0 5px #ff00ff;
+        margin-top: 0;
+        margin-bottom: 5px;
+        font-size: 18px;
+    }
+</style>
+</head>
+<body>
+
+<div id="flash-overlay"></div>
+<div id="alert-msg">ATTENTION</div>
+<div id="photo-grade">S</div>
+
+<div id="ui">
+    <div class="hud-line">DIST: <span id="distVal">0.0</span> km</div>
+    <div class="hud-line">VIES: <span id="hearts">❤️❤️❤️</span></div>
+    <div class="hud-line" style="font-size:16px; color:#aaa;" id="timer">00:00</div>
+    <div class="hud-line" style="font-size:16px; color:#ffff00;">BONUS PHOTO: <span id="photoScore">0</span></div>
+</div>
+
+<div id="speedometer">
+    <span class="hud-label">VITESSE:</span> <span id="speedVal">0 km/h</span>
+</div>
+
+<div id="brake-btn" ontouchstart="startBrake(event)" ontouchend="stopBrake(event)" onmousedown="startBrake(event)" onmouseup="stopBrake(event)">FREIN</div>
+
+<div id="horn-btn" ontouchstart="honk(event)" onmousedown="honk(event)">📢</div>
+
+<div id="nos-container">
+    <div id="nos-bar-bg"><div id="nos-bar-fill"></div></div>
+    <div id="nos-btn" ontouchstart="activateNOS(event)">NOS</div>
+</div>
+
+<div id="menuScreen" class="screen-overlay">
+    <h1>LES DRIVERS<br>LYONNAIS</h1>
+    <p>Sélectionne ton bolide</p>
+    <div id="garage">
+        <button class="nav-btn" onclick="changeCar(-1)">&#10094;</button>
+        <div class="car-box"><canvas id="previewCanvas"></canvas></div>
+        <button class="nav-btn" onclick="changeCar(1)">&#10095;</button>
+    </div>
+    <div id="carName">NOM</div>
+    <div id="carStats">
+        <span style="color:#aaa;font-weight:bold;">RAPIDITÉ :</span> <span id="statSpeed" class="stat-bar"></span><br>
+        <span style="color:#aaa;font-weight:bold;">MANIABILITÉ :</span> <span id="statHand" class="stat-bar"></span>
+    </div>
+    <button class="action-btn" onclick="startGame()">DÉMARRER</button>
+    <button class="action-btn secondary-btn" onclick="showLeaderboard()">🏆 SCORES (LOOTLOCKER)</button>
+    <button class="action-btn secondary-btn" onclick="showInstructions()">ℹ️ INSTRUCTIONS</button>
+</div>
+
+<div id="instructionsScreen" class="screen-overlay">
+    <h1>INSTRUCTIONS</h1>
+    <div class="instruction-section">
+        <h3>BUT DU JEU</h3>
+        <p>Atteignez la plus grande distance possible tout en gérant le trafic et les événements spéciaux.</p>
+    </div>
+    <div class="instruction-section">
+        <h3>CONTROLES</h3>
+        <p>• **TAP GAUCHE/DROIT** : Appuyez sur le côté gauche ou droit de l'écran pour vous déplacer d'une voie (similaire à un tap/swipe).</p>
+        <p>• **BOUTON FREIN** : Réduit la vitesse pour le pilotage précis.</p>
+        <p>• **BOUTON KLAXON (📢)** : Sert à prendre les photos dans les zones "SPOTTERS" pour un bonus de score.</p>
+        <p>• **BOUTON NOS** : Boost de vitesse de 5s et invincibilité temporaire.</p>
+    </div>
+    <div class="instruction-section">
+        <h3>RADAR</h3>
+        <p>• **VITESSE MAX AUTORISÉE : 70 km/h**</p>
+        <p>• Ralentissez sous 70 km/h avec le bouton FREIN pour éviter de perdre une vie.</p>
+    </div>
+    <button class="action-btn" onclick="closeInstructions()">RETOUR AU MENU</button>
+</div>
+
+
+<div id="leaderboardScreen" class="screen-overlay">
+    <h1>TOP PILOTES</h1>
+    <div class="leaderboard-content">
+        <table id="scoreTable">
+            <thead><tr><th>#</th><th>NOM</th><th>DIST</th></tr></thead>
+            <tbody id="scoreList"></tbody>
+        </table>
+        <img id="pilotMascot" src="https://i.ibb.co/cSHRYhPV/file-00000000b0dc71f4962ea895363a14af-2.png" alt="Pilote">
+    </div>
+    <button class="action-btn" onclick="closeLeaderboard()">RETOUR</button>
+</div>
+
+<div id="gameOverScreen" class="screen-overlay">
+    <h1 id="gameOverTitle">T'A BROYER L'AUTO MON COPAIN !</h1>
+    <div class="final-score-line">DIST. PARCOURUE : <span id="goDistance" class="final-score-value">0.0 km</span></div>
+    <div class="final-score-line">BONUS PHOTO : <span id="goBonus" class="final-score-value">0</span></div>
+    <div class="final-score-line" style="margin-top: 15px;">SCORE TOTAL : <span id="goFinalScore" class="final-score-value">0.00</span></div>
+    
+    <input type="text" id="nameInput" placeholder="ENTRER NOM (MAX 10 L.)" maxlength="10">
+
+    <button class="action-btn" onclick="submitScore()">ENVOYER AU CLASSEMENT</button>
+    <button class="action-btn secondary-btn" onclick="window.location.reload()">REJOUER (MENU PRINCIPAL)</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    const ROTATION_ANGLE = 0; 
+    const CAR_W = 45; 
+    const CAR_H = 95;
+    const BG_URL = "https://i.ibb.co/B2zdFmwb/1765327821263.jpg";
+    const TRUCK_URL = "https://i.ibb.co/M5Km2D98/1765393224904.png";
+
+    // DIMENSIONS CAMION FIXES
+    const TRUCK_W_FIXED = 240; 
+    const TRUCK_H_FIXED = 60;  
+    const RADAR_SPEED_LIMIT = 70; // Vitesse max du radar en km/h
+    const BRAKE_COOLDOWN_MS = 3000; // 3 secondes de délai pour le frein
+
+    // --- CONFIGURATION LOOTLOCKER ---
+    const LL_GAME_ID = "101303"; 
+    const LL_API_KEY = "dev_6e2e629f217946e39970b94134c58686";
+    // ID LEADERBOARD
+    const LL_LEADERBOARD_ID = "32340"; 
+    
+    let llSessionToken = "";
+
+    // LISTE DES 9 IMAGES ENNEMIES EXCLUSIVES (Liens directs ImgBB)
+    const ENEMY_SPRITE_URLS = [
+        "https://i.ibb.co/gbGhCsq3/1765396878722.png",
+        "https://i.ibb.co/0yhcjXy5/1765397118940.png",
+        "https://i.ibb.co/QvdHHpdk/1765397118940-1.png",
+        "https://i.ibb.co/XkMHYVc5/1765397118940-2.png",
+        "https://i.ibb.co/whXpcKD7/1765397118940-3.png",
+        "https://i.ibb.co/W4DPrBR5/1765397118940-4.png",
+        "https://i.ibb.co/PG2LqnSX/1765397132500-4.png",
+        "https://i.ibb.co/G41PXzjB/1765397132500-5.png",
+        "https://i.ibb.co/V0FRB8VY/1765397132500-1.png"
+    ];
+
+    // COULEURS POUR LE FALLBACK (si les images ne chargent pas)
+    const FALLBACK_COLORS = [
+        '#222222', '#555555', '#BBBBBB', '#0044BB', '#770000', '#006600', '#AA9900'  
+    ];
+    
+    // Les voitures jouables (total 11)
+    const carsData = [
+        { name: "PEUGEOT 205 T16", src: "https://i.ibb.co/v6QhzC0v/1765324109186-ezgif-com-png-to-jpg-converter.png", speedFactor: 10, handling: 0.9, descSpeed: "▮▮▮▯▯", descHand: "▮▮▮▮▯" },
+        { name: "PORSCHE 911",     src: "https://i.ibb.co/qfJh4D1/1765324109186-ezgif-com-crop-2.png", speedFactor: 14, handling: 1.1, descSpeed: "▮▮▮▮▮", descHand: "▮▮▮▯▯" },
+        { name: "BMW E30",         src: "https://i.ibb.co/ch46FTBY/1765324109186-ezgif-com-crop-3.png", speedFactor: 12, handling: 0.8, descSpeed: "▮▮▮▮▯", descHand: "▮▮▮▯▯" },
+        { name: "MERCEDES SL",     src: "https://i.ibb.co/nqNZ1h26/1765324109186-ezgif-com-crop.png", speedFactor: 11, handling: 0.7, descSpeed: "▮▮▮▯▯", descHand: "▮▮▯▯▯" },
+        { name: "AUDI QUATTRO",    src: "https://i.ibb.co/4Z5kVGxD/1765324109186-ezgif-com-crop-1.png", speedFactor: 11, handling: 1.0, descSpeed: "▮▮▮▯▯", descHand: "▮▮▮▮▮" },
+        { name: "RENAULT 5 TURBO", src: "https://i.ibb.co/gLpfpKx5/1765324109186-ezgif-com-crop-4.png", speedFactor: 9, handling: 1.2, descSpeed: "▮▮▯▯▯", descHand: "▮▮▮▮▮" },
+        { name: "SL D'ALEX", src: "https://i.ibb.co/sdL9DB3b/1765333831273-1.png", speedFactor: 13, handling: 0.8, descSpeed: "▮▮▮▮▯", descHand: "▮▮▮▯▯" },
+        { name: "BOXSTER S 986 D'ALEX", src: "https://i.ibb.co/xtsYpCK5/1765333831273-2-1.png", speedFactor: 13, handling: 1.2, descSpeed: "▮▮▮▮▯", descHand: "▮▮▮▮▮" },
+        { name: "FERRARI TESTAROSSA", src: "https://i.ibb.co/6RY19XVR/1765336708745.png", speedFactor: 14, handling: 1.1, descSpeed: "▮▮▮▮▮", descHand: "▮▮▮▮▯" },
+        { name: "SHELBY GT500 ELEANOR", src: "https://i.ibb.co/pBSQNMM3/thumbnail-1765469042532.png", speedFactor: 15, handling: 0.85, descSpeed: "▮▮▮▮▮+", descHand: "▮▮▮▯▯" },
+        // AJOUT DE LA FOURMI ACROMY (Très lente, très maniable) - NOUVEAU LIEN
+        { name: "FOURMI ACROMY", src: "https://i.ibb.co/3Z8zLGX/1765462278497.png", speedFactor: 5, handling: 1.5, descSpeed: "▮▯▯▯▯", descHand: "▮▮▮▮▮+" }
+    ];
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const distEl = document.getElementById('distVal');
+    const heartsEl = document.getElementById('hearts');
+    const timerEl = document.getElementById('timer');
+    const photoScoreEl = document.getElementById('photoScore');
+    const menuScreen = document.getElementById('menuScreen');
+    const leaderboardScreen = document.getElementById('leaderboardScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const instructionsScreen = document.getElementById('instructionsScreen');
+    const speedValEl = document.getElementById('speedVal');
+    const goDistanceEl = document.getElementById('goDistance');
+    const goBonusEl = document.getElementById('goBonus');
+    const goFinalScoreEl = document.getElementById('goFinalScore');
+    const nameInputEl = document.getElementById('nameInput');
+    const goTitleEl = document.getElementById('gameOverTitle');
+    const carNameEl = document.getElementById('carName');
+    const pCanvas = document.getElementById('previewCanvas');
+    const pCtx = pCanvas.getContext('2d');
+    const statSpeedEl = document.getElementById('statSpeed');
+    const statHandEl = document.getElementById('statHand');
+    const nosContainer = document.getElementById('nos-container');
+    const nosBarFill = document.getElementById('nos-bar-fill');
+    const nosBtn = document.getElementById('nos-btn');
+    const brakeBtn = document.getElementById('brake-btn');
+    const hornBtn = document.getElementById('horn-btn');
+    const alertMsg = document.getElementById('alert-msg');
+    const photoGradeMsg = document.getElementById('photo-grade');
+    const flashOverlay = document.getElementById('flash-overlay');
+    const scoreList = document.getElementById('scoreList');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    pCanvas.width = 140; pCanvas.height = 180;
+
+    ctx.imageSmoothingEnabled = false;
+    pCtx.imageSmoothingEnabled = false;
+
+    const bgImage = new Image(); bgImage.src = BG_URL;
+    const truckImage = new Image(); truckImage.src = TRUCK_URL;
+    
+    // Chargement des 9 images ennemies exclusives
+    const enemyImages = ENEMY_SPRITE_URLS.map(url => {
+        const img = new Image();
+        img.src = url;
+        return img;
+    });
+    
+    let currentCarIndex = 0;
+    const loadedImages = [];
+    carsData.forEach((data, index) => {
+        const img = new Image(); img.src = data.src;
+        img.onload = () => { if(index === currentCarIndex) updateMenu(); };
+        loadedImages[index] = img;
+    });
+
+    function drawRotated(context, img, x, y, width, height, angleDegrees, opacity = 1) {
+        if (!img.complete) {
+            context.save();
+            context.fillStyle = "red"; 
+            context.fillRect(x, y, width, height);
+            context.restore();
+            return;
+        }
+        context.save();
+        context.globalAlpha = opacity;
+        context.translate(x + width / 2, y + height / 2);
+        context.rotate(angleDegrees * Math.PI / 180);
+        context.drawImage(img, -width / 2, -height / 2, width, height);
+        context.restore();
+    }
+    
+    function drawEnemyCar(context, x, y, opacity, obs) {
+        const baseImage = obs.img;
+        
+        context.save();
+        context.globalAlpha = opacity;
+
+        if (!baseImage || !baseImage.complete) {
+            context.fillStyle = '#555555';
+            context.fillRect(x, y, CAR_W, CAR_H);
+            context.restore();
+            return;
+        }
+
+        drawRotated(context, baseImage, x, y, CAR_W, CAR_H, ROTATION_ANGLE, opacity);
+        
+        context.restore();
+    }
+
+
+    function updateMenu() {
+        const car = carsData[currentCarIndex];
+        carNameEl.innerText = car.name;
+        statSpeedEl.innerText = car.descSpeed;
+        statHandEl.innerText = car.descHand;
+        pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+        const previewW = 45; const previewH = 95;
+        drawRotated(pCtx, loadedImages[currentCarIndex], (pCanvas.width-previewW)/2, (pCanvas.height-previewH)/2, previewW, previewH, ROTATION_ANGLE);
+    }
+
+    window.changeCar = function(dir) {
+        currentCarIndex += dir;
+        if(currentCarIndex < 0) currentCarIndex = carsData.length - 1;
+        if(currentCarIndex >= carsData.length) currentCarIndex = 0;
+        updateMenu();
+    };
+
+    window.showInstructions = function() {
+        menuScreen.style.display = 'none';
+        instructionsScreen.style.display = 'flex';
+    }
+
+    window.closeInstructions = function() {
+        instructionsScreen.style.display = 'none';
+        menuScreen.style.display = 'flex';
+    }
+
+    // --- FONCTIONS LOOTLOCKER ---
+
+    async function initLootLocker() {
+        try {
+            const response = await fetch('https://api.lootlocker.io/game/v2/session/guest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_key: LL_API_KEY, game_version: "1.0.0" })
+            });
+            const data = await response.json();
+            if(data.session_token) {
+                llSessionToken = data.session_token;
+                console.log("LootLocker connecté");
+            } else {
+                console.error("Erreur connexion LootLocker", data);
+            }
+        } catch(e) { console.error("LootLocker init error", e); }
+    }
+
+    // Appel à l'initialisation au chargement
+    initLootLocker();
+
+    async function getScores() {
+        if(!llSessionToken) { await initLootLocker(); }
+        if(!llSessionToken) return [];
+
+        try {
+            const response = await fetch(`https://api.lootlocker.io/game/leaderboards/${LL_LEADERBOARD_ID}/list?count=10`, {
+                method: 'GET',
+                headers: { 
+                    'x-session-token': llSessionToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            // Correction ici pour bien lire les noms depuis les metadata
+            if(data && data.items && Array.isArray(data.items)) {
+                return data.items.map(item => {
+                    let playerName = item.metadata || ("Pilote " + item.rank);
+                    return {
+                        name: playerName,
+                        score: item.score
+                    };
+                });
+            }
+            return [];
+        } catch (e) {
+            console.error("Erreur récupération scores", e);
+            return [];
+        }
+    }
+
+    async function saveScore(name, dist) {
+        if(!llSessionToken) { await initLootLocker(); }
+        
+        let cleanName = name.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 10);
+        if(cleanName === "") cleanName = "Anonyme";
+        
+        let scoreToSend = Math.floor(parseFloat(dist) * 10); 
+        
+        try {
+            await fetch(`https://api.lootlocker.io/game/leaderboards/${LL_LEADERBOARD_ID}/submit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-session-token': llSessionToken
+                },
+                body: JSON.stringify({
+                    score: scoreToSend,
+                    metadata: cleanName // On stocke le nom dans les métadonnées
+                })
+            });
+            showLeaderboard();
+        } catch(e) {
+            console.error("Erreur envoi score", e);
+        }
+    }
+
+    async function showLeaderboard() {
+        menuScreen.style.display = 'none';
+        gameOverScreen.style.display = 'none';
+        instructionsScreen.style.display = 'none';
+        leaderboardScreen.style.display = 'flex';
+        scoreList.innerHTML = "<tr><td colspan='3'>Chargement...</td></tr>";
+        
+        let scores = await getScores();
+        
+        scoreList.innerHTML = "";
+        if(scores.length === 0) {
+            scoreList.innerHTML = "<tr><td colspan='3'>Aucun score ou ID Leaderboard invalide</td></tr>";
+        } else {
+            scores.forEach((s, i) => {
+                let distReelle = (parseInt(s.score) / 10).toFixed(1);
+                scoreList.innerHTML += `<tr><td>#${i+1}</td><td>${s.name}</td><td>${distReelle} km</td></tr>`;
+            });
+        }
+    }
+
+    window.closeLeaderboard = function() {
+        leaderboardScreen.style.display = 'none';
+        menuScreen.style.display = 'flex';
+    };
+    
+    // FONCTION POUR ENVOYER LE SCORE DEPUIS L'ECRAN GAME OVER
+    window.submitScore = function() {
+        const name = nameInputEl.value.toUpperCase().substring(0, 10) || "ANONYME";
+        const finalScore = parseFloat(goFinalScoreEl.innerText);
+        
+        if (finalScore > 0) {
+            saveScore(name, finalScore);
+        }
+    }
+
+    // VARIABLES JEU
+    let gameRunning = false;
+    let distance = 0;
+    let speed = 10;
+    let targetSpeed = 10; 
+    let baseSpeed = 10; 
+    let handling = 0.8;
+    let startTime;
+    let difficultyInterval;
+    let elapsedTime = 0;
+    let lives = 3;
+    let isInvincible = false;
+    let invincibilityTimer = 0;
+
+    let nosLevel = 0; 
+    let isNosActive = false;
+    let nosEndTime = 0;
+    let isBraking = false;
+    let brakeCooldownEndTime = 0; // Cooldown timer
+
+    let currentLevel = 1;
+    let levelEvents = []; 
+    let lastLevelEvents = [];
+    let isWarningActive = false; 
+    
+    let isTunnelActive = false; let tunnelEndTime = 0;
+    let isFogActive = false; let fogEndTime = 0;
+    let isIceActive = false; let iceEndTime = 0;
+    let isWorkActive = false; let workEndTime = 0;
+    let isStormActive = false; let stormEndTime = 0;
+    let isPhotoActive = false;
+    let photoZoneY = -1000;
+    let photoBonusScore = 0;
+    let isPosing = false; 
+    let posingEndTime = 0;
+
+    let radars = [];
+    let cones = [];
+
+    let player = { x: 0, y: 0, targetX: 0, laneIndex: 1 }; 
+    let obstacles = [];
+    let bonuses = [];
+    let roadLines = [];
+
+    const ROAD_WIDTH_PCT = 0.50; 
+    const ROAD_WIDTH = canvas.width * ROAD_WIDTH_PCT;
+    const ROAD_LEFT = (canvas.width - ROAD_WIDTH) / 2; 
+    const ROAD_RIGHT = ROAD_LEFT + ROAD_WIDTH;
+    const LANE_WIDTH = ROAD_WIDTH / 3;
+
+    function lerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+
+    function handleTap(e) {
+        if(!gameRunning || isPosing) return;
+        if(e.target.id === 'nos-btn' || e.target.parentNode.id === 'nos-container' || e.target.id === 'brake-btn' || e.target.id === 'horn-btn') return;
+        
+        e.preventDefault(); 
+        
+        // Gérer le mouvement seulement si ce n'est pas un bouton de contrôle
+        let isControl = (e.target.closest('#brake-btn') || e.target.closest('#horn-btn') || e.target.closest('#nos-container'));
+        if (isControl) return;
+
+        let touchX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+        let screenCenter = window.innerWidth / 2;
+        
+        // Logique : Taper à gauche de l'écran ou à droite de l'écran
+        if (touchX < screenCenter) {
+            // Taper à gauche -> déplacer vers la voie immédiatement à gauche
+            if(player.laneIndex > 0) player.laneIndex--;
+        } else {
+            // Taper à droite -> déplacer vers la voie immédiatement à droite
+            if(player.laneIndex < 2) player.laneIndex++;
+        }
+
+        // Calcule la nouvelle cible X basée sur le nouvel index de voie
+        player.targetX = getLaneX(player.laneIndex);
+    }
+
+    canvas.addEventListener('touchstart', handleTap, {passive: false});
+    canvas.addEventListener('mousedown', handleTap);
+    
+    window.startBrake = function(e) { 
+        if (Date.now() < brakeCooldownEndTime) return;
+        e.stopPropagation(); 
+        e.preventDefault(); 
+        isBraking = true; 
+    };
+
+    window.stopBrake = function(e) { 
+        if (!isBraking) return;
+        e.stopPropagation(); 
+        e.preventDefault(); 
+        isBraking = false; 
+        brakeCooldownEndTime = Date.now() + BRAKE_COOLDOWN_MS; 
+        brakeBtn.classList.add('cooldown');
+    };
+
+    window.activateNOS = function(e) {
+        e.stopPropagation(); e.preventDefault();
+        if (nosLevel >= 100 && !isNosActive && !isPosing) {
+            isNosActive = true; nosLevel = 0; 
+            nosBarFill.style.width = "0%";
+            hornBtn.style.display = 'none'; 
+            nosContainer.style.display = 'flex'; 
+            
+            targetSpeed = baseSpeed + 20; 
+            
+            nosEndTime = Date.now() + 5000; 
+        }
+    };
+
+    window.honk = function(e) {
+        e.stopPropagation(); e.preventDefault();
+        if(isPosing) return;
+        if(isPhotoActive && photoZoneY > player.y - 100 && photoZoneY < player.y + 100) {
+            takePhoto();
+        }
+    }
+
+    function takePhoto() {
+        isPosing = true;
+        triggerFlash();
+        let diff = Math.abs((photoZoneY + 100) - (player.y + CAR_H/2));
+        let grade = ""; let pts = 0; let color = "white";
+
+        if(diff < 30) { grade = "S - PARFAIT !"; pts = 500; color = "#00ff00"; }
+        else if(diff < 60) { grade = "A - SUPER"; pts = 250; color = "cyan"; }
+        else if(diff < 100) { grade = "B - COOL"; pts = 100; color = "yellow"; }
+        else { grade = "C - RATÉ..."; pts = 10; color = "red"; }
+
+        photoBonusScore += pts;
+        photoScoreEl.innerText = photoBonusScore;
+        photoGradeMsg.innerText = grade; photoGradeMsg.style.color = color;
+        photoGradeMsg.style.display = "block";
+
+        posingEndTime = Date.now() + 2000; 
+        setTimeout(() => { photoGradeMsg.style.display = "none"; }, 2000);
+    }
+
+    window.startGame = function() {
+        menuScreen.style.display = 'none';
+        leaderboardScreen.style.display = 'none';
+        gameOverScreen.style.display = 'none';
+        instructionsScreen.style.display = 'none';
+
+        brakeBtn.style.display = 'flex';
+        brakeBtn.classList.remove('cooldown'); 
+        
+        hornBtn.style.display = 'none'; 
+        nosContainer.style.display = 'none'; 
+
+        distance = 0; lives = 3; updateHearts(); isInvincible = false;
+        
+        baseSpeed = carsData[currentCarIndex].speedFactor;
+        
+        targetSpeed = baseSpeed + (Math.random() * 0.5) - 0.25; 
+        speed = targetSpeed;
+        
+        handling = carsData[currentCarIndex].handling;
+
+        nosLevel = 0; isNosActive = false; photoBonusScore = 0; photoScoreEl.innerText = "0";
+
+        obstacles = []; bonuses = []; roadLines = []; radars = []; cones = [];
+        
+        isTunnelActive = false; isFogActive = false; isIceActive = false; isWorkActive = false; isStormActive = false; isPhotoActive = false;
+        isWarningActive = false; isPosing = false;
+        currentLevel = 1;
+        lastLevelEvents = [];
+        pickLevelEvents(); 
+
+        elapsedTime = 0; startTime = Date.now();
+        
+        // Démarre la voiture au centre de la voie du milieu (index 1)
+        player.laneIndex = 1;
+        let initialLaneX = getLaneX(player.laneIndex);
+        player.targetX = initialLaneX;
+        player.x = initialLaneX;
+        player.y = canvas.height - 150; 
+        
+        gameRunning = true;
+        
+        if(difficultyInterval) clearInterval(difficultyInterval);
+        
+        loop();
+
+        difficultyInterval = setInterval(() => {
+            if(!gameRunning || isPosing) return;
+            
+            let levelCheck = Math.floor((Date.now() - startTime) / 45000) + 1;
+            if(levelCheck > currentLevel) {
+                currentLevel = levelCheck;
+                if(!isNosActive && !isBraking) { targetSpeed += 2; baseSpeed += 2; }
+                showAlert("NIVEAU " + currentLevel + " !", "orange", "black");
+                pickLevelEvents(); 
+            }
+
+            if(Math.random() < 0.08 && !isEventActive() && !isWarningActive) {
+                warnAndTriggerEvent();
+            }
+
+        }, 1000); 
+
+        setInterval(() => {
+            if(!gameRunning || isPosing) return;
+            if(obstacles.length >= 2) return;
+            
+            let blockedLane = -1;
+            if(isWorkActive && cones.length > 0) blockedLane = cones[0].lane;
+
+            let laneIndex = Math.floor(Math.random() * 3);
+            if(laneIndex === blockedLane) return;
+
+            let safeToSpawn = true;
+            if(obstacles.length > 0) {
+                 let lastObs = obstacles[obstacles.length - 1];
+                 if(lastObs.y < -50) safeToSpawn = false;
+                 if(Math.abs(lastObs.x - getLaneX(laneIndex)) < 10) safeToSpawn = false;
+            }
+            if(safeToSpawn) {
+                let obsX = getLaneX(laneIndex);
+                
+                // CHOIX DU SPRITE ENNEMI ET DE SA COULEUR
+                const randomSpriteIndex = Math.floor(Math.random() * enemyImages.length); 
+                const randomColorIndex = Math.floor(Math.random() * FALLBACK_COLORS.length); 
+                
+                let enemyFactor = 0.4 + Math.random() * 0.4;
+                
+                obstacles.push({ 
+                    x: obsX, y: -150, 
+                    img: enemyImages[randomSpriteIndex], 
+                    factor: enemyFactor, 
+                    lane: laneIndex,
+                    color: FALLBACK_COLORS[randomColorIndex] 
+                });
+            }
+        }, 800); 
+
+        setInterval(() => {
+            if(!gameRunning || isPosing) return;
+            if(lives < 3 && Math.random() < 0.2) {
+                let laneIndex = Math.floor(Math.random() * 3);
+                let safe = true;
+                obstacles.forEach(o => { if(Math.abs(o.x - getLaneX(laneIndex)) < 10 && o.y < 0) safe = false; });
+                if(safe) bonuses.push({ x: getLaneX(laneIndex) + (CAR_W/2) - 15, y: -150, w: 30, h: 30 });
+            }
+        }, 3000);
+        
+        setInterval(() => {
+            if(!gameRunning || isPosing) return;
+            roadLines.push({x: canvas.width/2 - 5, y: -50});
+        }, 150);
+    };
+
+    function gameOver(crashType = 'CRASH') {
+        gameRunning = false; 
+        nosContainer.style.display = 'none'; 
+        brakeBtn.style.display = 'none';
+        hornBtn.style.display = 'none';
+        
+        const finalScore = parseFloat(distance.toFixed(1)) + (photoBonusScore / 100);
+
+        goDistanceEl.innerText = distance.toFixed(1) + " km";
+        goBonusEl.innerText = photoBonusScore;
+        goFinalScoreEl.innerText = finalScore.toFixed(2);
+        nameInputEl.value = ""; 
+
+        if (crashType === 'FLASH') {
+            goTitleEl.innerText = "PERMIS RETIRÉ ! (FLASHÉ)";
+            goTitleEl.style.color = "#00ffff";
+            goTitleEl.style.textShadow = "0 0 10px #00ffff, 0 0 20px #008080";
+        } else {
+            goTitleEl.innerText = "T'A BROYER L'AUTO MON COPAIN !";
+            goTitleEl.style.color = "#ff0000";
+            goTitleEl.style.textShadow = "0 0 10px #ff0000, 0 0 20px #800000";
+        }
+
+        gameOverScreen.style.display = 'flex';
+    }
+
+    function pickLevelEvents() {
+        if(Math.random() < 0.30) {
+            levelEvents = []; 
+            lastLevelEvents = [];
+            showAlert("ROUTE DÉGAGÉE...", "lime", "black");
+            return;
+        }
+        const allEvents = ['TUNNEL', 'RADAR', 'FOG', 'ICE', 'WORK', 'STORM', 'TRUCK', 'PHOTO'];
+        const availableEvents = allEvents.filter(e => !lastLevelEvents.includes(e));
+        
+        let shuffled = availableEvents.sort(() => 0.5 - Math.random());
+        let count = (currentLevel === 1) ? 1 : 2;
+        levelEvents = shuffled.slice(0, count);
+        lastLevelEvents = levelEvents;
+    }
+
+    function isEventActive() {
+        return isTunnelActive || isFogActive || isIceActive || isWorkActive || isStormActive || isPhotoActive;
+    }
+
+    function warnAndTriggerEvent() {
+        if (levelEvents.length === 0) return;
+        let eventType = levelEvents[Math.floor(Math.random() * levelEvents.length)];
+
+        isWarningActive = true;
+        let eventName = "";
+        let color = "white";
+        
+        if(eventType === 'TUNNEL') { eventName = "TUNNEL"; color = "yellow"; }
+        else if(eventType === 'RADAR') { eventName = "ZONE RADAR"; color = "cyan"; }
+        else if(eventType === 'FOG') { eventName = "BROUILLARD"; color = "#ccc"; }
+        else if(eventType === 'ICE') { eventName = "VERGLAS"; color = "cyan"; }
+        else if(eventType === 'WORK') { eventName = "TRAVAUX"; color = "orange"; }
+        else if(eventType === 'STORM') { eventName = "ORAGE VIOLENT"; color = "purple"; }
+        else if(eventType === 'TRUCK') { eventName = "CONVOI EXCEPTIONNEL"; color = "pink"; }
+        else if(eventType === 'PHOTO') { eventName = "SPOTTERS ! PRÉPARE TOI"; color = "#ff00ff"; }
+
+        showAlert("⚠️ " + eventName + " DANS 3s ⚠️", color, "black");
+
+        setTimeout(() => {
+            isWarningActive = false;
+            launchEventEffect(eventType);
+        }, 3000);
+    }
+
+    function launchEventEffect(eventType) {
+        let duration = 6000 + (currentLevel * 1500); 
+
+        if(eventType === 'TUNNEL') {
+            isTunnelActive = true; tunnelEndTime = Date.now() + duration;
+        } 
+        else if(eventType === 'RADAR') { spawnRadar(); }
+        else if(eventType === 'FOG') { isFogActive = true; fogEndTime = Date.now() + duration; }
+        else if(eventType === 'ICE') { isIceActive = true; iceEndTime = Date.now() + duration; }
+        else if(eventType === 'WORK') { isWorkActive = true; workEndTime = Date.now() + duration; startRoadWorks(); }
+        else if(eventType === 'STORM') { isStormActive = true; stormEndTime = Date.now() + duration; }
+        else if(eventType === 'TRUCK') { spawnTruck(); }
+        else if(eventType === 'PHOTO') { 
+            isPhotoActive = true; 
+            photoZoneY = -500; 
+        }
+    }
+
+    function spawnRadar() {
+        radars.push({ x: ROAD_RIGHT + 5, y: -50, passed: false });
+    }
+
+    function startRoadWorks() {
+        let lane = Math.floor(Math.random() * 3);
+        for(let i=0; i<6; i++) {
+            cones.push({ x: getLaneX(lane) + CAR_W/2 - 15, y: -100 - (i*150), lane: lane });
+        }
+    }
+
+    function spawnTruck() {
+        let laneStart = (Math.random() < 0.5) ? 0 : 1; 
+        let dx = -(baseSpeed * 0.3); 
+
+        obstacles.push({ 
+            x: ROAD_RIGHT, y: canvas.height / 2, 
+            type: 'truck', w: TRUCK_W_FIXED, h: TRUCK_H_FIXED, img: truckImage, factor: 0, 
+            dx: dx 
+        });
+    }
+
+    function showAlert(text, color, bg) {
+        alertMsg.innerText = text;
+        alertMsg.style.color = color;
+        alertMsg.style.backgroundColor = bg;
+        alertMsg.style.display = "block";
+        setTimeout(() => { alertMsg.style.display = "none"; }, 2500);
+    }
+
+    function triggerFlash() {
+        flashOverlay.style.opacity = 1;
+        setTimeout(() => { flashOverlay.style.opacity = 0; }, 150);
+    }
+
+    function getLaneX(laneIndex) {
+        let laneLeftX = ROAD_LEFT + (laneIndex * LANE_WIDTH);
+        return laneLeftX + (LANE_WIDTH - CAR_W) / 2;
+    }
+
+    function formatTime(ms) {
+        let totalSeconds = Math.floor(ms / 1000);
+        let minutes = Math.floor(totalSeconds / 60);
+        let seconds = totalSeconds % 60;
+        return (minutes < 10 ? "0" + minutes : minutes) + ":" + (seconds < 10 ? "0" + seconds : seconds);
+    }
+
+    function updateHearts() {
+        let h = "";
+        for(let i=0; i<lives; i++) h += "❤️";
+        for(let i=lives; i<3; i++) h += "🖤";
+        heartsEl.innerText = h;
+    }
+
+    function loop() {
+        if(!gameRunning) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if(isTunnelActive && Date.now() > tunnelEndTime) isTunnelActive = false;
+        if(isFogActive && Date.now() > fogEndTime) isFogActive = false;
+        if(isIceActive && Date.now() > iceEndTime) isIceActive = false;
+        if(isWorkActive && Date.now() > workEndTime && cones.length === 0) isWorkActive = false;
+        if(isStormActive && Date.now() > stormEndTime) isStormActive = false;
+
+        if(isPosing) {
+            if(Date.now() > posingEndTime) {
+                isPosing = false; isPhotoActive = false; 
+                showAlert("C'EST REPARTI !", "lime", "black");
+            }
+            drawGameStatic();
+            requestAnimationFrame(loop);
+            return;
+        }
+
+        // Gérer le cooldown du frein
+        if (Date.now() < brakeCooldownEndTime) {
+            brakeBtn.classList.add('cooldown');
+        } else {
+            brakeBtn.classList.remove('cooldown');
+        }
+
+        // --- Mise à jour de la VITESSE (Interpolation) ---
+        if (isNosActive) {
+            if (Date.now() > nosEndTime) {
+                isNosActive = false; targetSpeed = baseSpeed; 
+                hornBtn.style.display = 'none'; 
+                nosContainer.style.display = 'none';
+            }
+        } else {
+            if (isBraking) { targetSpeed = 1; } 
+            else { 
+                targetSpeed = baseSpeed + (Math.random() * 0.5) - 0.25; 
+            }
+        }
+
+        // Interpolation douce de la vitesse actuelle vers la vitesse cible
+        speed = lerp(speed, targetSpeed, 0.2); 
+        
+        // Gestion du NOS / Klaxon
+        if (isPhotoActive) {
+            hornBtn.style.display = 'flex'; 
+            nosContainer.style.display = 'none';
+        } else if (nosLevel >= 100 && !isNosActive) { 
+            hornBtn.style.display = 'none'; 
+            nosContainer.style.display = 'flex';
+        } else {
+            hornBtn.style.display = 'none'; 
+            nosContainer.style.display = 'none'; 
+        }
+
+        if (!isNosActive && nosLevel < 100) { 
+            // Charge NOS seulement si un véhicule ennemi sort de l'écran
+            // La charge n'augmente plus en temps, mais uniquement par ennemi passé.
+        }
+        // Mise à jour visuelle du NOS même s'il ne charge pas ici
+        nosBarFill.style.width = nosLevel + "%";
+        // --- FIN Gestion VITESSE / NOS ---
+
+
+        // --- DESSIN DU FOND (FORCE) ---
+        ctx.fillStyle = "#1a1a2e"; 
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        
+        if(bgImage.complete) { ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height); } 
+        
+        let now = Date.now();
+        elapsedTime = now - startTime;
+        timerEl.innerText = formatTime(elapsedTime);
+        distance += (speed / 1000); distEl.innerText = distance.toFixed(1);
+        speedValEl.innerHTML = `${Math.floor(speed * 10)} km/h`; 
+
+        if(isIceActive) ctx.fillStyle = "#2c3e50"; else ctx.fillStyle = "#2c2c2c";
+        ctx.fillRect(ROAD_LEFT, 0, ROAD_WIDTH, canvas.height);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(ROAD_LEFT, 0, 4, canvas.height); ctx.fillRect(ROAD_RIGHT - 4, 0, 4, canvas.height);
+
+        let line1X = ROAD_LEFT + LANE_WIDTH; let line2X = ROAD_LEFT + (LANE_WIDTH * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)"; 
+        roadLines.forEach((l, i) => {
+            l.y += speed;
+            ctx.fillRect(line1X - 2, l.y, 4, 30); ctx.fillRect(line2X - 2, l.y, 4, 30);
+            if(l.y > canvas.height) roadLines.splice(i, 1);
+        });
+        // --- FIN DESSIN DU FOND ---
+
+        if(isPhotoActive) {
+            photoZoneY += speed; 
+            ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
+            ctx.fillRect(ROAD_LEFT, photoZoneY, ROAD_WIDTH, 200);
+            ctx.strokeStyle = "#00ff00"; ctx.lineWidth = 3;
+            ctx.strokeRect(ROAD_LEFT, photoZoneY, ROAD_WIDTH, 200);
+            
+            ctx.font = "30px Arial";
+            ctx.fillText("📸", ROAD_RIGHT + 10, photoZoneY + 50);
+            ctx.fillText("📸", ROAD_LEFT - 40, photoZoneY + 120);
+
+            if(photoZoneY > canvas.height) isPhotoActive = false; 
+        }
+
+        let moveFactor = isIceActive ? 0.03 : 0.15 * handling;
+        player.x += (player.targetX - player.x) * moveFactor;
+        
+        let opacity = 1;
+        if(isInvincible) {
+            if(Math.floor(Date.now() / 100) % 2 === 0) opacity = 0.5;
+            if(Date.now() > invincibilityTimer) isInvincible = false;
+        }
+        
+        if(isNosActive) {
+            ctx.fillStyle = "rgba(0, 200, 255, 0.6)"; ctx.beginPath();
+            ctx.moveTo(player.x + 10, player.y + CAR_H);
+            ctx.lineTo(player.x + CAR_W/2, player.y + CAR_H + 40 + Math.random()*20);
+            ctx.lineTo(player.x + CAR_W - 10, player.y + CAR_H);
+            ctx.fill();
+            player.x += (Math.random()-0.5)*2;
+        }
+
+        let lean = (player.x - player.targetX) * 0.5; 
+        ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 15;
+        
+        if(isTunnelActive && !isNosActive) { 
+            // Invisible
+        } else {
+            drawRotated(ctx, loadedImages[currentCarIndex], player.x, player.y, CAR_W, CAR_H, ROTATION_ANGLE - lean, opacity);
+            
+        }
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+        radars.forEach((r, i) => {
+            r.y += speed;
+            ctx.fillStyle = "#888"; ctx.fillRect(r.x, r.y, 5, 50);
+            ctx.fillStyle = "#444"; ctx.fillRect(r.x-10, r.y, 15, 20);
+            ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(ROAD_LEFT, r.y + 100, ROAD_WIDTH, 5);
+
+            if (!r.passed && r.y + 100 > player.y + 20) { 
+                r.passed = true;
+                if (speed * 10 > RADAR_SPEED_LIMIT) { // Vitesse réelle (speed * 10) > 70 km/h
+                    triggerFlash(); lives--; updateHearts();
+                    if(lives <= 0) { gameOver('FLASH'); } else { showAlert(`FLASHÉ ! Limite ${RADAR_SPEED_LIMIT} km/h -1 VIE`, "red", "white"); }
+                }
+            }
+            if(r.y > canvas.height) radars.splice(i, 1);
+        });
+
+        cones.forEach((c, i) => {
+            c.y += speed;
+            ctx.fillStyle = "orange";
+            ctx.beginPath();
+            ctx.moveTo(c.x + 15, c.y);
+            ctx.lineTo(c.x, c.y + 30);
+            ctx.lineTo(c.x + 30, c.y + 30);
+            ctx.fill();
+            
+            if(!isInvincible && !isNosActive && player.x < c.x + 30 && player.x + CAR_W > c.x && player.y < c.y + 30 && player.y + CAR_H > c.y) {
+                lives--; updateHearts();
+                if(lives <= 0) { gameOver('CRASH'); } 
+                else { isInvincible = true; invincibilityTimer = Date.now() + 2000; showAlert("ATTENTION TRAVAUX !", "orange", "black"); }
+            }
+            if(c.y > canvas.height) cones.splice(i, 1);
+        });
+
+        bonuses.forEach((b, i) => {
+            b.y += speed;
+            ctx.font = "30px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("🔧", b.x + b.w/2, b.y + b.h/2);
+            if (player.x < b.x + b.w && player.x + CAR_W > b.x && player.y < b.y + b.h && player.y + CAR_H > b.y) {
+                if(lives < 3) { lives++; updateHearts(); ctx.fillStyle = "#00ff00"; ctx.fillText("+1 VIE !", player.x + CAR_W/2, player.y - 20); }
+                bonuses.splice(i, 1);
+            }
+            if(b.y > canvas.height) bonuses.splice(i, 1);
+        });
+
+        for (let i = 0; i < obstacles.length; i++) {
+            let obs = obstacles[i];
+            
+            let mySpeed = speed;
+            
+            if (obs.type === 'truck') {
+                obs.x += obs.dx; 
+                obs.y += mySpeed;
+                
+                if (obs.x + TRUCK_W_FIXED < ROAD_LEFT) {
+                    obstacles.splice(i, 1);
+                    i--;
+                    continue;
+                }
+            } else {
+                let braking = false;
+                for(let j = 0; j < obstacles.length; j++) {
+                    if (i !== j && obstacles[j].type !== 'truck') {
+                        let other = obstacles[j];
+                        if (other.y > obs.y && other.y < obs.y + 200 && Math.abs(other.x - obs.x) < 20) { braking = true; }
+                    }
+                }
+                let enemyBaseSpeed = speed * obs.factor;
+                if (braking) enemyBaseSpeed = speed; 
+                obs.y += (mySpeed - enemyBaseSpeed);
+            }
+
+            let obsOp = isNosActive ? 0.5 : 1;
+            
+            if(isTunnelActive && !isNosActive) {
+            } else {
+                if(isFogActive) {
+                    let visibility = Math.max(0, (obs.y) / (canvas.height/2));
+                    ctx.globalAlpha = Math.min(1, visibility);
+                }
+                
+                if(obs.type === 'truck') {
+                    if (truckImage.complete) {
+                        ctx.drawImage(truckImage, obs.x, obs.y, TRUCK_W_FIXED, TRUCK_H_FIXED);
+                    } else {
+                        ctx.fillStyle = "blue"; ctx.fillRect(obs.x, obs.y, TRUCK_W_FIXED, TRUCK_H_FIXED);
+                    }
+                } else {
+                    drawRotated(ctx, obs.img, obs.x, obs.y, CAR_W, CAR_H, ROTATION_ANGLE, obsOp);
+                }
+                ctx.globalAlpha = 1;
+
+            }
+
+            let hit = false;
+            let obsW = obs.type === 'truck' ? TRUCK_W_FIXED : CAR_W;
+            let obsH = obs.type === 'truck' ? TRUCK_H_FIXED : CAR_H; 
+
+            if (!isInvincible && !isNosActive && 
+                player.x < obs.x + obsW - 5 && 
+                player.x + CAR_W - 5 > obs.x && 
+                player.y < obs.y + obsH - 5 && 
+                player.y + CAR_H - 5 > obs.y) {
+                hit = true;
+            }
+
+            if (hit) {
+                lives--; updateHearts();
+                if(lives <= 0) { gameOver('CRASH'); } 
+                else { isInvincible = true; invincibilityTimer = Date.now() + 2000; obs.y += 100; }
+            }
+            if(obs.y > canvas.height) {
+                // Si l'obstacle sort par le bas, il est dépassé
+                if (obs.type !== 'truck') {
+                    // Charger le NOS pour chaque ennemi dépassé
+                    let chargeAmount = 100 / 100; // 1% par véhicule
+                    nosLevel = Math.min(100, nosLevel + chargeAmount);
+                }
+                obstacles.splice(i, 1); i--;
+            }
+        }
+
+        if (isTunnelActive) {
+            ctx.fillStyle = "rgba(0,0,0,0.98)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.globalCompositeOperation = "destination-out";
+            ctx.beginPath();
+            ctx.moveTo(player.x + 10, player.y + 10); ctx.lineTo(player.x - 20, player.y - 400); ctx.lineTo(player.x + 20, player.y - 400); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(player.x + CAR_W - 10, player.y + 10); ctx.lineTo(player.x + CAR_W - 20, player.y - 400); ctx.lineTo(player.x + CAR_W + 20, player.y - 400); ctx.fill();
+            ctx.restore();
+            obstacles.forEach(obs => {
+                let obsH = obs.type === 'truck' ? TRUCK_H_FIXED : CAR_H;
+                ctx.fillStyle = "#ff0000"; ctx.shadowColor = "red"; ctx.shadowBlur = 20;
+                ctx.fillRect(obs.x + 5, obs.y + obsH - 5, 8, 5); 
+                ctx.fillRect(obs.x + (obs.w || CAR_W) - 13, obs.y + obsH - 5, 8, 5); 
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        if(isFogActive) {
+            let grad = ctx.createLinearGradient(0, 0, 0, canvas.height/2);
+            grad.addColorStop(0, "rgba(200, 200, 200, 0.95)");
+            grad.addColorStop(1, "rgba(200, 200, 200, 0)");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        if(isStormActive) {
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<10; i++) {
+                let rx = Math.random() * canvas.width;
+                let ry = Math.random() * canvas.height;
+                ctx.moveTo(rx, ry); ctx.lineTo(rx - 5, ry + 20);
+            }
+            ctx.stroke();
+            if(Math.random() < 0.05) { 
+                ctx.fillStyle = "rgba(255,255,255,0.8)";
+                ctx.fillRect(0,0,canvas.width, canvas.height);
+            }
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    function drawGameStatic() {
+        if(bgImage.complete) { ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height); } 
+        
+        ctx.fillStyle = "#2c2c2c"; ctx.fillRect(ROAD_LEFT, 0, ROAD_WIDTH, canvas.height);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(ROAD_LEFT, 0, 4, canvas.height); ctx.fillRect(ROAD_RIGHT - 4, 0, 4, canvas.height);
+
+        let line1X = ROAD_LEFT + LANE_WIDTH; let line2X = ROAD_LEFT + (LANE_WIDTH * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)"; 
+        roadLines.forEach((l) => {
+            ctx.fillRect(line1X - 2, l.y, 4, 30); ctx.fillRect(line2X - 2, l.y, 4, 30);
+        });
+
+        if(isPhotoActive) {
+            ctx.fillStyle = "rgba(0, 255, 0, 0.3)";
+            ctx.fillRect(ROAD_LEFT, photoZoneY, ROAD_WIDTH, 200);
+            ctx.strokeStyle = "#00ff00"; ctx.lineWidth = 3;
+            ctx.strokeRect(ROAD_LEFT, photoZoneY, ROAD_WIDTH, 200);
+        }
+        
+        drawRotated(ctx, loadedImages[currentCarIndex], player.x, player.y, CAR_W, CAR_H, 0);
+
+        obstacles.forEach((obs) => {
+            if(obs.type === 'truck') {
+                if (truckImage.complete) {
+                    ctx.drawImage(truckImage, obs.x, obs.y, TRUCK_W_FIXED, TRUCK_H_FIXED);
+                } else {
+                    ctx.fillStyle = "blue"; ctx.fillRect(obs.x, obs.y, TRUCK_W_FIXED, TRUCK_H_FIXED);
+                }
+            } else {
+                drawRotated(ctx, obs.img, obs.x, obs.y, CAR_W, CAR_H, 0);
+            }
+        });
+    }
+</script>
+</body>
+</html>
